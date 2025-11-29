@@ -1,12 +1,3 @@
---[=[
- d888b  db    db d888888b      .d888b.      db      db    db  .d8b.  
-88' Y8b 88    88   `88'        VP  `8D      88      88    88 d8' `8b 
-88      88    88    88            odD'      88      88    88 88ooo88 
-88  ooo 88    88    88          .88'        88      88    88 88~~~88 
-88. ~8~ 88b  d88   .88.        j88.         88booo. 88b  d88 88   88    @uniquadev
- Y888P  ~Y8888P' Y888888P      888888D      Y88888P ~Y8888P' YP   YP  CONVERTER 
-]=]
-
 -- Instances: 72 | Scripts: 4 | Modules: 1 | Tags: 0
 local G2L = {};
 
@@ -655,18 +646,30 @@ local watermark = [[
                                                                 
 ]]
 
-local module = {
-	["player"] = players.LocalPlayer,
-	["userid"] = players.LocalPlayer.UserId,
-	["username"] = players.LocalPlayer.Name,
-	["usericon"] = players:GetUserThumbnailAsync(players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
-}
+local module = {}
 
 local function waitForAssetsLoaded(parent)
+	local TIMEOUT = 10
 	for _, child in parent:GetDescendants() do
-		if (child:IsA("ImageLabel") or child:IsA("ImageButton")) and child.Image ~= "" or child:IsA("Sound ")then
+		if (child:IsA("ImageLabel") or child:IsA("ImageButton")) and child.Image ~= "" then
+			local start = os.clock()
 			while not child.IsLoaded do
-				task.wait()
+				if os.clock() - start > TIMEOUT then
+					warn("Timeout loading image asset: " .. tostring(child.Image))
+					warn("Asset loading timed out, continuing without waiting for all assets.")
+					return
+				end
+				task.wait(0.05)
+			end
+		elseif child:IsA("Sound") then
+			local start = os.clock()
+			while not child.IsLoaded do
+				if os.clock() - start > TIMEOUT then
+					warn("Timeout loading sound asset: " .. tostring(child.SoundId))
+					warn("Asset loading timed out, continuing without waiting for all assets.")
+					return
+				end
+				task.wait(0.05)
 			end
 		end
 	end
@@ -682,7 +685,9 @@ local function tweenFramesIn(frames)
 		Size = UDim2.new(0.654, 0, 0.627, 0)
 	})
 	tweenin:Play()
-	script.Parent.Parent.sounds.framesshow:Play()
+	if script.Parent.Parent:FindFirstChild("sounds") and script.Parent.Parent.sounds:FindFirstChild("framesshow") then
+		script.Parent.Parent.sounds.framesshow:Play()
+	end
 end
 
 local function tweenFramesOut(frames)
@@ -693,7 +698,9 @@ local function tweenFramesOut(frames)
 		Size = UDim2.new(0, 0, 0, 0)
 	})
 	tweenout:Play()
-	script.Parent.Parent.sounds.frameshide:Play()
+	if script.Parent.Parent:FindFirstChild("sounds") and script.Parent.Parent.sounds:FindFirstChild("frameshide") then
+		script.Parent.Parent.sounds.frameshide:Play()
+	end
 	tweenout.Completed:Wait()
 	frames.Visible = false
 end
@@ -742,7 +749,7 @@ loading cozy's matcha script...
 	sidebar.Visible = false
 	frames.Visible = false
 	
-	for i, frame in pairs(frames:GetChildren()) do
+	for i, frame in frames:GetChildren() do
 		if frame:IsA("Frame") then
 			frame.Visible = false
 		end
@@ -921,7 +928,7 @@ local script = G2L["29"];
 	local ts = game.TweenService
 	local handler = require(script.Parent.Parent.loader.handler)
 	
-	script.Parent.user.Image = handler.usericon
+	script.Parent.user.Image = game.Players:GetUserThumbnailAsync(game.Players.LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
 	
 	for i, button in pairs(buttons:GetChildren()) do
 		if button:IsA("GuiButton") then
@@ -959,35 +966,62 @@ task.spawn(C_29);
 -- StarterGui.cozymatcha.frames.rig info.handler
 local function C_36()
 local script = G2L["36"];
-	local module = require(script.Parent.Parent.Parent.loader.handler)
-	local player = module.player
+	local player = game.Players.LocalPlayer
 	
 	local viewport = script.Parent.viewport
 	local worldmodel = viewport.WorldModel
 	
 	local info = script.Parent.info
 	
-	while true do
-		local character = player.Character
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		
+	local function updateInfo(character, humanoid)
 		if character and humanoid then
 			info.rigname.Text = "rig name: \"" .. character.Name .. "\""
-			info.humanoidhealth = "health: " .. humanoid.Health
-			info.humanoidmaxhealth = "max health: " .. humanoid.MaxHealth
-			
-			humanoid.Changed:Wait()
-		end
-		
-		if not character or not humanoid then
-			for i, label in pairs(info:GetChildren()) do
+			info.humanoidhealth.Text = "health: " .. humanoid.Health
+			info.humanoidmaxhealth.Text = "max health: " .. humanoid.MaxHealth
+		else
+			for i, label in info:GetChildren() do
 				if label:IsA("TextLabel") then
 					label.Text = "no character found"
 				end
 			end
-			task.wait(1)
 		end
 	end
+	
+	local function onHumanoidAdded(humanoid, character)
+		updateInfo(character, humanoid)
+		
+		humanoid.HealthChanged:Connect(function()
+			updateInfo(character, humanoid)
+		end)
+		
+		humanoid.StateChanged:Connect(function()
+			updateInfo(character, humanoid)
+		end)
+	end
+	
+	local function onCharacterAdded(character)
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			onHumanoidAdded(humanoid, character)
+		else
+			updateInfo(character, nil)
+			character.ChildAdded:Connect(function(child)
+				if child:IsA("Humanoid") then
+					onHumanoidAdded(child, character)
+				end
+			end)
+		end
+	end
+	
+	if player.Character then
+		onCharacterAdded(player.Character)
+	else
+		updateInfo(nil, nil)
+	end
+	
+	player.CharacterAdded:Connect(onCharacterAdded)
+	
+	
 end;
 task.spawn(C_36);
 -- StarterGui.cozymatcha.frames.rig info.info.copy.LocalScript
